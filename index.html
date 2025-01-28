@@ -4,9 +4,46 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity Web Player | OpenWorld</title>
+    <style>
+      /* Fullscreen styles */
+      body, html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* Fullscreen loading screen */
+      #loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 24px;
+        font-family: Arial, sans-serif;
+        z-index: 1000;
+      }
+
+      #unity-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: fixed;
+      }
+    </style>
   </head>
-  <body style="text-align: center; padding: 0; border: 0; margin: 0;">
-    <canvas id="unity-canvas" width=720 height=480 tabindex="-1" style="width: 720px; height: 480px; background: #231F20"></canvas>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">Loading Game...</div>
+    
+    <canvas id="unity-canvas" tabindex="-1" style="background: #231F20"></canvas>
+
     <script src="Build/UnityFinal7.loader.js"></script>
     <script>
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
@@ -24,6 +61,7 @@
         document.body.style.textAlign = "left";
       }
 
+      // Create Unity instance with fullscreen settings
       createUnityInstance(document.querySelector("#unity-canvas"), {
         arguments: [],
         dataUrl: "Build/UnityFinal7.data",
@@ -33,8 +71,16 @@
         companyName: "DefaultCompany",
         productName: "OpenWorld",
         productVersion: "0.1.0",
-        // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
-        // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
+        matchWebGLToCanvasSize: true,
+        devicePixelRatio: window.devicePixelRatio,
+      }).then(function (unityInstance) {
+        // Hide the loading screen when the game is ready
+        document.getElementById("loading-screen").style.display = "none";
+
+        // Force fullscreen on load
+        unityInstance.SetFullscreen(1);
+      }).catch(function (message) {
+        alert(message);
       });
     </script>
   </body>
