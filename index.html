@@ -54,6 +54,7 @@
         
         const objects = [];
         let raycaster;
+        let terrain;
         
         let prevTime = performance.now();
         const velocity = new THREE.Vector3();
@@ -75,6 +76,10 @@
         let pitch = 0;
         let yaw = 0;
         const MAX_PITCH = Math.PI / 2 - 0.1;
+        
+        // Terrain data for height checking
+        let terrainData;
+        const terrainSize = 64; // Must match the segments in PlaneGeometry
         
         // Initialize the game
         init();
@@ -110,6 +115,11 @@
             // Setup raycaster for collision detection
             raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
             
+            // Initialize terrain data array
+            terrainData = new Array(terrainSize + 1).fill().map(() => 
+                new Array(terrainSize + 1).fill(0)
+            );
+            
             // Create terrain
             createTerrain();
             
@@ -135,19 +145,28 @@
             
             // Start animation for water
             animateWater();
+            
+            // Start on flat ground near the center
+            camera.position.set(RIVER_WIDTH * 3, PLAYER_HEIGHT, 0);
         }
         
         function createTerrain() {
             // Create ground plane with grass texture
             const groundSize = WORLD_SIZE;
             
-            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 64, 64);
+            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, terrainSize, terrainSize);
             
             // Create hills and valleys with noise
             const simplex = new SimplexNoise();
             const vertices = groundGeometry.attributes.position.array;
             
-            for (let i = 0; i < vertices.length; i += 3) {
+            // Store terrain data for collision detection
+            for (let i = 0, row = 0, col = 0; i < vertices.length; i += 3, col++) {
+                if (col > terrainSize) {
+                    col = 0;
+                    row++;
+                }
+                
                 const x = vertices[i];
                 const z = vertices[i + 2];
                 
@@ -161,7 +180,13 @@
                              simplex.noise2D(x * 0.08, z * 0.08) * 0.5;
                 
                 // Apply the height (but keep it flat near the river)
-                vertices[i + 1] = noise * riverFactor;
+                const height = noise * riverFactor;
+                vertices[i + 1] = height;
+                
+                // Store height in our terrain data grid
+                if (row < terrainData.length && col < terrainData[0].length) {
+                    terrainData[row][col] = height;
+                }
             }
             
             // Update the geometry normals
@@ -175,11 +200,11 @@
                 wireframe: false
             });
             
-            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2;
-            ground.receiveShadow = true;
-            scene.add(ground);
-            objects.push(ground);
+            terrain = new THREE.Mesh(groundGeometry, groundMaterial);
+            terrain.rotation.x = -Math.PI / 2;
+            terrain.receiveShadow = true;
+            scene.add(terrain);
+            objects.push(terrain);
         }
         
         function createTrees() {
@@ -211,10 +236,7 @@
                 } while (Math.abs(x) < RIVER_WIDTH * 2); // Avoid placing trees in the river
                 
                 // Get terrain height at this position
-                const terrainHeight = 
-                    simplex.noise2D(x * 0.02, z * 0.02) * 2 + 
-                    simplex.noise2D(x * 0.04, z * 0.04) * 1 + 
-                    simplex.noise2D(x * 0.08, z * 0.08) * 0.5;
+                const terrainHeight = getHeightAt(x, z);
                 
                 // Create tree with random scale
                 const treeScale = 0.8 + Math.random() * 0.6;
@@ -419,6 +441,24 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
+        // Helper function to get terrain height at any position
+        function getHeightAt(x, z) {
+            if (!terrainData) return 0;
+            
+            // Convert world coordinates to terrain grid coordinates
+            const halfSize = WORLD_SIZE / 2;
+            const gridX = Math.floor(((x + halfSize) / WORLD_SIZE) * terrainSize);
+            const gridZ = Math.floor(((z + halfSize) / WORLD_SIZE) * terrainSize);
+            
+            // Check bounds
+            if (gridX < 0 || gridX >= terrainSize || gridZ < 0 || gridZ >= terrainSize) {
+                return 0;
+            }
+            
+            // Get height from terrain data
+            return terrainData[gridZ][gridX];
+        }
+        
         function animate() {
             requestAnimationFrame(animate);
             
@@ -429,6 +469,18 @@
                 
                 // Apply gravity
                 velocity.y -= GRAVITY * delta;
+                
+                // Get current terrain height at player position
+                const terrainHeight = getHeightAt(camera.position.x, camera.position.z);
+                
+                // Check if player is on the ground
+                const isOnGround = camera.position.y <= terrainHeight + PLAYER_HEIGHT;
+                
+                if (isOnGround) {
+                    velocity.y = Math.max(0, velocity.y);
+                    camera.position.y = terrainHeight + PLAYER_HEIGHT;
+                    canJump = true;
+                }
                 
                 // Set movement direction
                 direction.z = Number(moveForward) - Number(moveBackward);
@@ -446,6 +498,9 @@
                 right.y = 0;
                 right.normalize();
                 
+                // Store old position for collision detection
+                const oldPosition = camera.position.clone();
+                
                 // Move in the direction the camera is facing
                 if (moveForward || moveBackward) {
                     camera.position.addScaledVector(forward, -direction.z * PLAYER_SPEED * delta);
@@ -455,19 +510,17 @@
                     camera.position.addScaledVector(right, -direction.x * PLAYER_SPEED * delta);
                 }
                 
-                // Apply gravity and check for collisions
+                // Apply gravity
                 camera.position.y += velocity.y * delta;
                 
-                // Check if we're on the ground
-                raycaster.ray.origin.copy(camera.position);
-                raycaster.ray.origin.y -= 0.1;
+                // Get new terrain height
+                const newTerrainHeight = getHeightAt(camera.position.x, camera.position.z);
                 
-                const intersections = raycaster.intersectObjects(objects);
-                const onObject = intersections.length > 0;
-                
-                if (onObject) {
-                    velocity.y = Math.max(0, velocity.y);
-                    camera.position.y = intersections[0].point.y + PLAYER_HEIGHT;
+                // Collision detection with terrain
+                // Make sure the player can't go below terrain
+                if (camera.position.y < newTerrainHeight + PLAYER_HEIGHT) {
+                    camera.position.y = newTerrainHeight + PLAYER_HEIGHT;
+                    velocity.y = 0;
                     canJump = true;
                 }
                 
