@@ -1,41 +1,164 @@
 <!DOCTYPE html>
 <html lang="en-us">
-  <head>
+<head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity Web Player | NewHorrorProject</title>
-  </head>
-  <body style="text-align: center; padding: 0; border: 0; margin: 0;">
-    <canvas id="unity-canvas" width=1920 height=1080 tabindex="-1" style="width: 1920px; height: 1080px; background: #231F20"></canvas>
-    <script src="Build/unityfish.loader.js"></script>
+    <style>
+        body { 
+            overflow: hidden; 
+            margin: 0; 
+            padding: 0;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        
+        #unity-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
+        }
+        
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            background: #231f20;
+        }
+        
+        #loading-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 10;
+        }
+        
+        #unity-loading-bar {
+            width: 300px;
+            height: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            margin: 20px auto;
+            padding: 2px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        #unity-progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #8c2022;
+            border-radius: 8px;
+            transition: width 0.3s;
+            background-image: linear-gradient(45deg, 
+                rgba(255,255,255,0.15) 25%, 
+                transparent 25%, 
+                transparent 50%, 
+                rgba(255,255,255,0.15) 50%, 
+                rgba(255,255,255,0.15) 75%, 
+                transparent 75%, 
+                transparent);
+            background-size: 20px 20px;
+            animation: progress-bar-stripes 1s linear infinite;
+        }
+        
+        @keyframes progress-bar-stripes {
+            0% { background-position: 0 0; }
+            100% { background-position: 20px 0; }
+        }
+        
+        #loading-title {
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(140, 32, 34, 0.8);
+        }
+        
+        #loading-status {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            margin: 20px auto;
+            border: 5px solid rgba(140, 32, 34, 0.3);
+            border-radius: 50%;
+            border-top: 5px solid #8c2022;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="unity-container">
+        <canvas id="unity-canvas" width="1920" height="1080" tabindex="-1" style="width: 100%; height: 100%; background: #231f20;"></canvas>
+    </div>
+    
+    <div id="loading-container">
+        <div id="loading-title">NEW HORROR PROJECT</div>
+        <div class="spinner"></div>
+        <div id="unity-loading-bar">
+            <div id="unity-progress-bar"></div>
+        </div>
+        <div id="loading-status">Preparing to scare you...</div>
+    </div>
+    
+    <script src="Build/NewHorrorProject.loader.js"></script>
     <script>
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
+        var loadingContainer = document.querySelector("#loading-container");
+        var progressBar = document.querySelector("#unity-progress-bar");
+        var loadingStatus = document.querySelector("#loading-status");
+        var statusTexts = [
+            "Loading environment...", 
+            "Spawning entities...", 
+            "Calibrating fear levels...", 
+            "Preparing jump scares...",
+            "Dimming the lights..."
+        ];
+        var currentStatus = 0;
+        
+        function updateLoadingStatus() {
+            loadingStatus.textContent = statusTexts[currentStatus];
+            currentStatus = (currentStatus + 1) % statusTexts.length;
+        }
+        
+        var statusInterval = setInterval(updateLoadingStatus, 3000);
+        updateLoadingStatus();
+        
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/NewHorrorProject.loader.js";
+        var config = {
+            dataUrl: buildUrl + "/NewHorrorProject.data",
+            frameworkUrl: buildUrl + "/NewHorrorProject.framework.js",
+            codeUrl: buildUrl + "/NewHorrorProject.wasm",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "DefaultCompany",
+            productName: "NewHorrorProject",
+            productVersion: "0.1",
+            showBanner: false,
+        };
 
-        var canvas = document.querySelector("#unity-canvas");
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-        canvas.style.position = "fixed";
-
-        document.body.style.textAlign = "left";
-      }
-
-      createUnityInstance(document.querySelector("#unity-canvas"), {
-        arguments: [],
-        dataUrl: "Build/unityfish.data",
-        frameworkUrl: "Build/unityfish.framework.js",
-        codeUrl: "Build/unityfish.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "NewHorrorProject",
-        productVersion: "0.1.0",
-        // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
-        // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
-      });
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(document.querySelector("#unity-canvas"), config, (progress) => {
+                progressBar.style.width = (100 * progress) + "%";
+            }).then((unityInstance) => {
+                loadingContainer.style.display = "none";
+                clearInterval(statusInterval);
+            }).catch((message) => {
+                alert(message);
+            });
+        };
+        document.body.appendChild(script);
     </script>
-  </body>
+</body>
 </html>
